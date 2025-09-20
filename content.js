@@ -6,6 +6,7 @@ let settings = {}
 let messageCount = 0
 let designPanel = null
 let designGenerator = null
+let messagesList = []
 
 class MessageProcessor {
   analyzeMessage(messageText, messageElement) {
@@ -165,7 +166,7 @@ function setupMessageObserver() {
   })
 
   // Start observing the Discord chat container
-  const chatContainer = document.querySelector('[class*="messagesWrapper-"]');
+  const chatContainer = document.querySelector('[class*="messagesWrapper"]');
   if (chatContainer) {
     console.log("[HACKATHON] Found chat container, starting observer")
     observer.observe(chatContainer, {
@@ -178,6 +179,63 @@ function setupMessageObserver() {
   }
 }
 
+function printNode(messageElement) {
+  console.log("[HACKATHON] === PRINTING NODE ===")
+  console.log("[HACKATHON] Node tag:", messageElement.tagName)
+  console.log("[HACKATHON] Node id:", messageElement.id)
+  console.log("[HACKATHON] Node classes:", messageElement.className)
+  
+  // Get Discord message content using the correct selector
+  const messageContentElement = messageElement.querySelector('[class*="messageContent"]')
+  let messageText = ""
+  
+  if (messageContentElement) {
+    messageText = messageContentElement.textContent || messageContentElement.innerText || ""
+    console.log("[HACKATHON] Message content found:", messageText)
+  } else {
+    // Fallback: try to get text from the entire message element
+    messageText = messageElement.textContent || messageElement.innerText || ""
+    console.log("[HACKATHON] No messageContent element found, using full text:", messageText)
+  }
+
+  // Extract username
+  const usernameElement = messageElement.querySelector('[class*="username"]')
+  let username = ""
+  if (usernameElement) {
+    username = usernameElement.textContent || usernameElement.getAttribute('data-text') || ""
+    console.log("[HACKATHON] Username:", username)
+  }
+
+  // Log timestamp if available
+  const timestampElement = messageElement.querySelector('time')
+  if (timestampElement) {
+    const timestamp = timestampElement.getAttribute('datetime') || timestampElement.textContent || ""
+    console.log("[HACKATHON] Timestamp:", timestamp)
+  }
+
+  // Add to messages list if we have both name and content
+  console.log("[HACKATHON] Checking if message should be added:")
+  console.log("[HACKATHON] Username found:", username)
+  console.log("[HACKATHON] Message text found:", messageText.trim())
+  console.log("[HACKATHON] Username length:", username.length)
+  console.log("[HACKATHON] Message text length:", messageText.trim().length)
+  
+  if (username && messageText.trim()) {
+    const messageObj = {
+      name: username.trim(),
+      content: messageText.trim()
+    }
+    messagesList.push(messageObj)
+    console.log("[HACKATHON] Added to messages list:", messageObj)
+    console.log("[HACKATHON] Total messages in list now:", messagesList.length)
+  } else {
+    console.log("[HACKATHON] Skipping message - missing username or content")
+  }
+
+  console.log("[HACKATHON] Full text content:", messageText.trim())
+  console.log("[HACKATHON] === END NODE PRINT ===")
+}
+
 function processExistingMessages() {
   console.log("[HACKATHON] Processing existing messages...")
   
@@ -186,21 +244,73 @@ function processExistingMessages() {
   const maxAttempts = 5
   
   const tryFindMessages = () => {
-    attempts++
-    const existingMessages = document.querySelectorAll('[class*="messageListItem"]')
-    console.log("[HACKATHON] Attempt", attempts, "- Found", existingMessages.length, "existing message(s)")
-    
-    if (existingMessages.length > 0) {
-      existingMessages.forEach(processMessage)
-    } else if (attempts < maxAttempts) {
-      console.log("[HACKATHON] No messages found, retrying in 1 second...")
-      setTimeout(tryFindMessages, 1000)
-    } else {
-      console.log("[HACKATHON] Max attempts reached, no messages found")
-    }
+    attempts++;
+    const existingMessages = document.querySelectorAll('[class*="messageListItem"]');
+    messagesList = Array.from(existingMessages).map(extractMessageData)
+    console.log("[HACKATHON] Messages list:", messagesList)
   }
   
   tryFindMessages()
+}
+
+function extractMessageData(messageElement) {
+  console.log("[HACKATHON] === EXTRACTING MESSAGE DATA ===")
+  
+  // Extract sender/username
+  let sender = ""
+  const usernameElement = messageElement.querySelector('[class*="username"]')
+  if (usernameElement) {
+    sender = usernameElement.textContent || usernameElement.getAttribute('data-text') || ""
+    console.log("[HACKATHON] Sender found:", sender)
+  } else {
+    console.log("[HACKATHON] No username element found")
+  }
+  
+  // Extract content
+  let content = ""
+  const messageContentElement = messageElement.querySelector('[class*="messageContent"]')
+  if (messageContentElement) {
+    content = messageContentElement.textContent || messageContentElement.innerText || ""
+    console.log("[HACKATHON] Content found:", content)
+  } else {
+    // Fallback: try to get text from the entire message element
+    content = messageElement.textContent || messageElement.innerText || ""
+    console.log("[HACKATHON] No messageContent element found, using full text:", content)
+  }
+  
+  // Extract timestamp if needed
+  let timestamp = ""
+  const timestampElement = messageElement.querySelector('time')
+  if (timestampElement) {
+    timestamp = timestampElement.getAttribute('datetime') || timestampElement.textContent || ""
+    console.log("[HACKATHON] Timestamp found:", timestamp)
+  }
+  
+  // Create the message object
+  const messageData = {
+    sender: sender.trim(),
+    content: content.trim(),
+    timestamp: timestamp.trim()
+  }
+  
+  console.log("[HACKATHON] Extracted message data:", messageData)
+  console.log("[HACKATHON] === END EXTRACTION ===")
+  
+  return messageData
+}
+
+function displayMessagesList() {
+  console.log("[HACKATHON] === MESSAGES LIST ===")
+  console.log("[HACKATHON] Total messages collected:", messagesList.length)
+  messagesList.forEach((message, index) => {
+    console.log(`[HACKATHON] Message ${index + 1}:`)
+    console.log(`[HACKATHON]   Name: ${message.name}`)
+    console.log(`[HACKATHON]   Content: ${message.content}`)
+  })
+  console.log("[HACKATHON] === END MESSAGES LIST ===")
+  
+  // Also log the full array for easy copying
+  console.log("[HACKATHON] Messages array:", JSON.stringify(messagesList, null, 2))
 }
 
 function processMessage(messageElement) {
