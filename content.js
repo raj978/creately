@@ -1,10 +1,11 @@
 // Content script that runs on Discord pages
+console.log("Content script loaded!")
+
 let isActive = false
 let settings = {}
 let messageCount = 0
 let designPanel = null
 let designGenerator = null
-const chrome = window.chrome // Declare the chrome variable
 
 class MessageProcessor {
   analyzeMessage(messageText, messageElement) {
@@ -112,6 +113,7 @@ let messageProcessor = null
 
 // Initialize the extension
 async function init() {
+  alert("Discord Design Assistant: Initializing...") // Temporary debug
   console.log("Discord Design Assistant: Initializing...")
 
   messageProcessor = new MessageProcessor()
@@ -134,7 +136,7 @@ async function init() {
 
 function startMonitoring() {
   console.log("Starting Discord message monitoring...")
-
+  
   // Monitor for new messages using MutationObserver
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
