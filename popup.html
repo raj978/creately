@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 350px;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      margin: 0;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+    }
+    
+    .status {
+      background: rgba(255, 255, 255, 0.1);
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      backdrop-filter: blur(10px);
+    }
+    
+    .api-key-section {
+      margin-bottom: 20px;
+    }
+    
+    .api-key-section label {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    .api-key-section input {
+      width: 100%;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+    
+    .button {
+      background: rgba(255, 255, 255, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      width: 100%;
+      margin-bottom: 10px;
+      transition: all 0.2s;
+    }
+    
+    .button:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+    
+    .button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .toggle-section {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 15px;
+    }
+    
+    .toggle {
+      position: relative;
+      width: 50px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    
+    .toggle.active {
+      background: #4CAF50;
+    }
+    
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 20px;
+      height: 20px;
+      background: white;
+      border-radius: 50%;
+      transition: transform 0.3s;
+    }
+    
+    .toggle.active::after {
+      transform: translateX(26px);
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🎨 Discord Design Assistant</h1>
+  </div>
+  
+  <div class="status" id="status">
+    <div>Status: <span id="statusText">Inactive</span></div>
+    <div>Messages monitored: <span id="messageCount">0</span></div>
+  </div>
+  
+  <div class="api-key-section">
+    <label for="apiKey">Google Gemini API Key:</label>
+    <input type="password" id="apiKey" placeholder="Enter your API key">
+  </div>
+  
+  <div class="toggle-section">
+    <span>Auto-generate designs</span>
+    <div class="toggle" id="autoToggle"></div>
+  </div>
+  
+  <button class="button" id="saveSettings">Save Settings</button>
+  <button class="button" id="testConnection">Test API Connection</button>
+  <button class="button" id="openPanel">Open Design Panel</button>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

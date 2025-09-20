@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Discord Design Assistant",
+  "version": "1.0.0",
+  "description": "AI-powered graphic design assistant for Discord users using Google's Gemini API",
+  "permissions": ["activeTab", "storage", "scripting"],
+  "host_permissions": ["https://discord.com/*", "https://generativelanguage.googleapis.com/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://discord.com/*"],
+      "js": ["content.js"],
+      "css": ["content.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Discord Design Assistant"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["panel.html", "panel.js", "panel.css", "message-processor.js"],
+      "matches": ["https://discord.com/*"]
+    }
+  ]
+}

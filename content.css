@@ -1,0 +1,34 @@
+/* Styles for content script elements */
+.design-assistant-btn {
+  transition: all 0.2s ease !important;
+}
+
+.design-assistant-btn:hover {
+  transform: scale(1.05) !important;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4) !important;
+}
+
+#design-assistant-float:hover {
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Ensure our elements don't interfere with Fiverr's styles */
+#design-assistant-panel * {
+  box-sizing: border-box !important;
+}
+
+/* Animation for panel appearance */
+#design-assistant-panel {
+  animation: slideInRight 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateY(-50%) translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(-50%) translateX(0);
+    opacity: 1;
+  }
+}
