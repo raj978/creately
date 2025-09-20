@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const autoToggle = document.getElementById("autoToggle")
   const saveButton = document.getElementById("saveSettings")
   const testButton = document.getElementById("testConnection")
+  const imagePrompt = document.getElementById("imagePrompt")
   const generateImageButton = document.getElementById("generateImage")
   const openPanelButton = document.getElementById("openPanel")
   const statusText = document.getElementById("statusText")
@@ -13,6 +14,50 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Declare chrome variable
   const chrome = window.chrome
+
+  // Function to enhance user prompt using Gemini LLM
+  async function enhancePrompt(userPrompt, apiKey) {
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: `You are an expert at writing detailed, clear image generation prompts. Take the user's simple description and enhance it into a detailed, artistic prompt that will generate high-quality images.
+
+User's description: "${userPrompt}"
+
+Transform this into a detailed image generation prompt that includes:
+- Artistic style and medium
+- Lighting and atmosphere
+- Color palette and mood  
+- Composition and details
+- Quality descriptors
+
+Keep it concise but descriptive (under 200 words). Only return the enhanced prompt, nothing else.`
+            }]
+          }]
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) {
+          return data.candidates[0].content.parts[0].text.trim()
+        }
+      }
+      
+      // Fallback to original prompt if enhancement fails
+      return userPrompt
+    } catch (error) {
+      console.error("Prompt enhancement error:", error)
+      return userPrompt
+    }
+  }
 
   // Load saved settings
   const settings = await chrome.storage.sync.get(["apiKey", "autoGenerate", "messageCount"])
@@ -88,21 +133,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     testButton.disabled = false
   })
 
-  // Generate image with nano banana model
+  // Generate image using enhanced prompt pipeline
   generateImageButton.addEventListener("click", async () => {
     const apiKey = apiKeyInput.value.trim()
+    const userPrompt = imagePrompt.value.trim()
+    
     if (!apiKey) {
       alert("Please enter your API key first")
+      return
+    }
+    
+    if (!userPrompt) {
+      alert("Please enter an image description")
       return
     }
 
     generateImageButton.textContent = "Generating..."
     generateImageButton.disabled = true
-    imageStatus.textContent = "Creating your pink dragon..."
+    imageStatus.textContent = "Enhancing your prompt..."
     imageContainer.style.display = "block"
 
     try {
-      // Using Google's Imagen 4 model for image generation
+      // Step 1: Enhance the user's prompt using Gemini LLM
+      imageStatus.textContent = "Enhancing your prompt..."
+      const enhancedPrompt = await enhancePrompt(userPrompt, apiKey)
+      console.log("Original prompt:", userPrompt)
+      console.log("Enhanced prompt:", enhancedPrompt)
+      
+      // Step 2: Generate image using enhanced prompt with Imagen 4
+      imageStatus.textContent = "Generating your image..."
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/imagen-4.0-generate-001:predict`, {
         method: 'POST',
         headers: {
@@ -111,7 +170,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         },
         body: JSON.stringify({
           instances: [{
-            prompt: "A cute pink dragon breathing out streams of clear blue water from its mouth. Fantasy art style, vibrant colors, magical atmosphere, detailed digital illustration, friendly expression, shimmering scales, crystal clear water streams, whimsical charm"
+            prompt: enhancedPrompt
           }],
           parameters: {
             sampleCount: 1,
@@ -169,7 +228,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }, 3000)
     }
 
-    generateImageButton.textContent = "🐉 Generate Pink Dragon"
+    generateImageButton.textContent = "🎨 Generate Image"
     generateImageButton.disabled = false
   })
 
