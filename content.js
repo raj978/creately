@@ -136,6 +136,16 @@ async function init() {
 function startMonitoring() {
   console.log("[HACKATHON] Starting Discord message monitoring...")
   
+  // Wait for Discord to load, then start monitoring
+  setTimeout(() => {
+    setupMessageObserver()
+    processExistingMessages()
+  }, 2000) // Wait 2 seconds for Discord to load
+}
+
+function setupMessageObserver() {
+  console.log("[HACKATHON] Setting up message observer...")
+  
   // Monitor for new messages using MutationObserver
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -143,8 +153,11 @@ function startMonitoring() {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
             // Look for new Discord message elements
-            const messages = node.querySelectorAll('[class*="message-"], [class*="messageListItem-"], [id*="chat-messages-"]')
-            messages.forEach(processMessage)
+            const messages = node.querySelectorAll('[class*="messageListItem"]')
+            if (messages.length > 0) {
+              console.log("[HACKATHON] Found", messages.length, "new message(s)")
+              messages.forEach(processMessage)
+            }
           }
         })
       }
@@ -152,19 +165,42 @@ function startMonitoring() {
   })
 
   // Start observing the Discord chat container
-  const chatContainer = document.querySelector(
-    '[class*="chatContent-"], [class*="messagesWrapper-"], [class*="scroller-"]',
-  )
+  const chatContainer = document.querySelector('[class*="messagesWrapper-"]');
   if (chatContainer) {
+    console.log("[HACKATHON] Found chat container, starting observer")
     observer.observe(chatContainer, {
       childList: true,
       subtree: true,
     })
+  } else {
+    console.log("[HACKATHON] Chat container not found, retrying in 1 second...")
+    setTimeout(setupMessageObserver, 1000)
   }
+}
 
-  // Also process existing messages
-  const existingMessages = document.querySelectorAll('[class*="message-"], [class*="messageListItem-"], [id*="chat-messages-"]')
-  existingMessages.forEach(processMessage)
+function processExistingMessages() {
+  console.log("[HACKATHON] Processing existing messages...")
+  
+  // Try multiple times to find messages
+  let attempts = 0
+  const maxAttempts = 5
+  
+  const tryFindMessages = () => {
+    attempts++
+    const existingMessages = document.querySelectorAll('[class*="messageListItem"]')
+    console.log("[HACKATHON] Attempt", attempts, "- Found", existingMessages.length, "existing message(s)")
+    
+    if (existingMessages.length > 0) {
+      existingMessages.forEach(processMessage)
+    } else if (attempts < maxAttempts) {
+      console.log("[HACKATHON] No messages found, retrying in 1 second...")
+      setTimeout(tryFindMessages, 1000)
+    } else {
+      console.log("[HACKATHON] Max attempts reached, no messages found")
+    }
+  }
+  
+  tryFindMessages()
 }
 
 function processMessage(messageElement) {
