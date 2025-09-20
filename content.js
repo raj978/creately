@@ -140,7 +140,7 @@ function startMonitoring() {
   // Wait for Discord to load, then start monitoring
   setTimeout(() => {
     setupMessageObserver()
-    processExistingMessages()
+    startPeriodicMessageProcessing()
   }, 2000) // Wait 2 seconds for Discord to load
 }
 
@@ -237,20 +237,22 @@ function printNode(messageElement) {
 }
 
 function processExistingMessages() {
-  console.log("[HACKATHON] Processing existing messages...")
+  const existingMessages = document.querySelectorAll('[class*="messageListItem"]');
+  messagesList = Array.from(existingMessages).map(extractMessageData)
+  displayMessagesList()
+}
+
+function startPeriodicMessageProcessing() {
+  console.log("[HACKATHON] Starting periodic message processing every 3 seconds...")
   
-  // Try multiple times to find messages
-  let attempts = 0
-  const maxAttempts = 5
+  // Run immediately
+  processExistingMessages()
   
-  const tryFindMessages = () => {
-    attempts++;
-    const existingMessages = document.querySelectorAll('[class*="messageListItem"]');
-    messagesList = Array.from(existingMessages).map(extractMessageData)
-    console.log("[HACKATHON] Messages list:", messagesList)
-  }
-  
-  tryFindMessages()
+  // Then run every 3 seconds
+  setInterval(() => {
+    console.log("[HACKATHON] Running periodic message processing...")
+    processExistingMessages()
+  }, 3000)
 }
 
 function extractMessageData(messageElement) {
