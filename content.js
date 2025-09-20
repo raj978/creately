@@ -169,6 +169,7 @@ function startMonitoring() {
 }
 
 function processMessage(messageElement) {
+  console.log("Received message");
   // Skip if already processed
   if (messageElement.dataset.processed) return
   messageElement.dataset.processed = "true"
