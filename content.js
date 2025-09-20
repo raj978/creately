@@ -126,21 +126,20 @@ async function init() {
     designGenerator = new DesignGenerator(settings.apiKey)
   }
 
-  // Check if we're on a Discord page with channels
-  if (window.location.href.includes("/channels/")) {
-    isActive = true
-    startMonitoring()
-    createFloatingButton()
-  }
+  // Always activate and start monitoring
+  isActive = true
+  startMonitoring()
+  createFloatingButton()
 }
 
 function startMonitoring() {
-  console.log("[HACKATHON] Starting Discord message monitoring...")
+  console.log("[HACKATHON] Starting message monitoring...")
   
-  // Wait for Discord to load, then start monitoring
+  // Wait for page to load, then start monitoring
   setTimeout(() => {
     setupMessageObserver()
     startPeriodicMessageProcessing()
+    processExistingMessages()
   }, 2000) // Wait 2 seconds for Discord to load
 }
 
@@ -1101,6 +1100,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!designPanel) {
       createDesignPanel()
     }
+  } else if (request.type === "GET_MESSAGES") {
+    // Return current messages list
+    console.log("[HACKATHON] Popup requested messages, returning:", messagesList.length, "messages")
+    
+    // If no messages found, add some test messages for development
+    if (messagesList.length === 0) {
+      messagesList = [
+        { sender: "Alice", content: "I need a logo design for my bakery" },
+        { sender: "Bob", content: "Can you make it colorful and fun?" },
+        { sender: "Charlie", content: "Maybe add some cute pastry illustrations" }
+      ]
+      console.log("[HACKATHON] Added test messages for development")
+    }
+    
+    sendResponse({ messages: messagesList })
+    return true // Keep message channel open for async response
   }
 })
 

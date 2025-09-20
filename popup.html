@@ -147,9 +147,13 @@
   <button class="button" id="testConnection">Test API Connection</button>
   
   <div class="image-generation-section" style="margin: 20px 0; padding: 15px; background: rgba(255, 255, 255, 0.1); border-radius: 8px; backdrop-filter: blur(10px);">
-    <label for="imagePrompt" style="display: block; margin-bottom: 8px; font-size: 14px; font-weight: 500;">Image Description:</label>
-    <textarea id="imagePrompt" placeholder="Describe the image you want to generate..." style="width: 100%; height: 80px; padding: 8px; border: none; border-radius: 6px; font-size: 14px; box-sizing: border-box; resize: vertical; font-family: inherit;"></textarea>
-    <button class="button" id="generateImage" style="margin-top: 10px; margin-bottom: 0;">🎨 Generate Image</button>
+    <div style="margin-bottom: 10px;">
+      <div style="font-size: 14px; font-weight: 500; margin-bottom: 5px;">Chat Messages:</div>
+      <div id="messagesPreview" style="background: rgba(255, 255, 255, 0.1); padding: 8px; border-radius: 6px; font-size: 12px; max-height: 60px; overflow-y: auto; border: 1px solid rgba(255, 255, 255, 0.2);">
+        Loading chat messages...
+      </div>
+    </div>
+    <button class="button" id="generateImage" style="margin-bottom: 0;">🎨 Generate Image from Chat</button>
   </div>
   
   <button class="button" id="openPanel">Open Design Panel</button>

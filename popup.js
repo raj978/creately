@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const autoToggle = document.getElementById("autoToggle")
   const saveButton = document.getElementById("saveSettings")
   const testButton = document.getElementById("testConnection")
-  const imagePrompt = document.getElementById("imagePrompt")
+  const messagesPreview = document.getElementById("messagesPreview")
   const generateImageButton = document.getElementById("generateImage")
   const openPanelButton = document.getElementById("openPanel")
   const statusText = document.getElementById("statusText")
@@ -12,12 +12,89 @@ document.addEventListener("DOMContentLoaded", async () => {
   const generatedImage = document.getElementById("generatedImage")
   const imageStatus = document.getElementById("imageStatus")
 
+  // Store for chat messages and generation memory
+  let chatMessages = []
+  let imageGenerationHistory = []
+
   // Declare chrome variable
   const chrome = window.chrome
 
-  // Function to enhance user prompt using Gemini LLM
-  async function enhancePrompt(userPrompt, apiKey) {
+  // Function to get messages from content script
+  async function getChatMessages() {
     try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      console.log("Current tab URL:", tab.url)
+      
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_MESSAGES" })
+      console.log("Response from content script:", response)
+      
+      if (response && response.messages) {
+        chatMessages = response.messages
+        console.log("Received messages:", chatMessages.length)
+        updateMessagesPreview()
+        return chatMessages
+      } else {
+        messagesPreview.textContent = "Content script not responding - try refreshing the page"
+        return []
+      }
+    } catch (error) {
+      console.error("Error getting chat messages:", error)
+      if (error.message.includes("Could not establish connection")) {
+        messagesPreview.textContent = "Content script not loaded - refresh the page"
+      } else {
+        messagesPreview.textContent = `Error: ${error.message}`
+      }
+    }
+    return []
+  }
+
+  // Function to update messages preview
+  function updateMessagesPreview() {
+    if (chatMessages.length === 0) {
+      messagesPreview.textContent = "No messages found"
+      return
+    }
+
+    const recentMessages = chatMessages.slice(-3) // Show last 3 messages
+    const preview = recentMessages.map(msg => {
+      const name = msg.sender || msg.name || 'Unknown'
+      const content = msg.content || ''
+      return content.trim() ? `${name}: ${content.substring(0, 50)}...` : null
+    }).filter(Boolean).join('\n')
+    
+    messagesPreview.textContent = preview || "Loading messages..."
+  }
+
+  // Function to analyze chat messages for image context
+  function analyzeMessagesForImageContext(messages) {
+    const recentMessages = messages.slice(-10) // Last 10 messages for context
+    const conversationText = recentMessages.map(msg => {
+      const name = msg.sender || msg.name || 'Unknown'
+      const content = msg.content || ''
+      return content.trim() ? `${name}: ${content}` : null
+    }).filter(Boolean).join('\n')
+
+    return {
+      conversationContext: conversationText,
+      messageCount: recentMessages.length,
+      participants: [...new Set(recentMessages.map(msg => msg.sender || msg.name))],
+      hasImageRequests: conversationText.toLowerCase().includes('image') || 
+                       conversationText.toLowerCase().includes('picture') ||
+                       conversationText.toLowerCase().includes('design') ||
+                       conversationText.toLowerCase().includes('draw')
+    }
+  }
+
+  // Function to enhance prompt using chat context and generation memory
+  async function enhancePromptWithContext(chatContext, apiKey) {
+    try {
+      // Build memory context from previous generations
+      const memoryContext = imageGenerationHistory.length > 0 
+        ? `\n\nPrevious image generations in this session:\n${imageGenerationHistory.map((gen, i) => 
+            `${i + 1}. ${gen.originalPrompt} -> Generated: ${gen.enhancedPrompt.substring(0, 100)}...`
+          ).join('\n')}\n\nUse this context to make the new image generation coherent with previous requests.`
+        : ""
+
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`, {
         method: 'POST',
         headers: {
@@ -27,18 +104,28 @@ document.addEventListener("DOMContentLoaded", async () => {
         body: JSON.stringify({
           contents: [{
             parts: [{
-              text: `You are an expert at writing detailed, clear image generation prompts. Take the user's simple description and enhance it into a detailed, artistic prompt that will generate high-quality images.
+              text: `You are an AI assistant that analyzes Discord chat conversations and creates detailed image generation prompts based on the context and suggestions in the chat.
 
-User's description: "${userPrompt}"
+Discord Conversation Context:
+${chatContext.conversationContext}
 
-Transform this into a detailed image generation prompt that includes:
-- Artistic style and medium
-- Lighting and atmosphere
-- Color palette and mood  
-- Composition and details
-- Quality descriptors
+${memoryContext}
 
-Keep it concise but descriptive (under 200 words). Only return the enhanced prompt, nothing else.`
+Instructions:
+1. Analyze the conversation for any image requests, suggestions, or creative ideas
+2. Look for descriptive elements, themes, styles, colors, or moods mentioned
+3. Create a detailed image generation prompt that captures the essence of what's being discussed
+4. If there are multiple suggestions, synthesize them into a cohesive concept
+5. Include artistic style, composition, lighting, and quality descriptors
+
+Requirements:
+- Create a prompt that reflects the conversation context
+- Make it detailed enough for high-quality image generation
+- If no clear image idea is present, create something inspired by the general conversation theme
+- Keep it under 200 words
+- Only return the enhanced prompt, nothing else
+
+Generate the image prompt now:`
             }]
           }]
         })
@@ -51,11 +138,11 @@ Keep it concise but descriptive (under 200 words). Only return the enhanced prom
         }
       }
       
-      // Fallback to original prompt if enhancement fails
-      return userPrompt
+      // Fallback prompt based on conversation themes
+      return "A creative digital artwork inspired by online conversation themes, modern style, vibrant colors, high quality illustration"
     } catch (error) {
       console.error("Prompt enhancement error:", error)
-      return userPrompt
+      return "A creative digital artwork inspired by conversation themes, modern style, vibrant colors"
     }
   }
 
@@ -71,12 +158,13 @@ Keep it concise but descriptive (under 200 words). Only return the enhanced prom
     messageCount.textContent = settings.messageCount
   }
 
-  // Check if extension is active on current tab
+  // Load messages from current tab
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
-  if (tab.url.includes("discord.com")) {
-    statusText.textContent = "Active"
-    statusText.style.color = "#4CAF50"
-  }
+  statusText.textContent = "Active"
+  statusText.style.color = "#4CAF50"
+  
+  // Load chat messages
+  await getChatMessages()
 
   // Toggle auto-generate
   autoToggle.addEventListener("click", () => {
@@ -133,32 +221,52 @@ Keep it concise but descriptive (under 200 words). Only return the enhanced prom
     testButton.disabled = false
   })
 
-  // Generate image using enhanced prompt pipeline
+  // Generate image using chat messages and memory
   generateImageButton.addEventListener("click", async () => {
     const apiKey = apiKeyInput.value.trim()
-    const userPrompt = imagePrompt.value.trim()
     
     if (!apiKey) {
       alert("Please enter your API key first")
       return
     }
+
+    // Get fresh messages
+    await getChatMessages()
     
-    if (!userPrompt) {
-      alert("Please enter an image description")
+    if (chatMessages.length === 0) {
+      alert("No chat messages found. Make sure the content script is loaded and messages are being collected.")
       return
     }
 
-    generateImageButton.textContent = "Generating..."
+    generateImageButton.textContent = "Analyzing..."
     generateImageButton.disabled = true
-    imageStatus.textContent = "Enhancing your prompt..."
+    imageStatus.textContent = "Analyzing chat messages..."
     imageContainer.style.display = "block"
 
     try {
-      // Step 1: Enhance the user's prompt using Gemini LLM
-      imageStatus.textContent = "Enhancing your prompt..."
-      const enhancedPrompt = await enhancePrompt(userPrompt, apiKey)
-      console.log("Original prompt:", userPrompt)
+      // Step 1: Analyze chat messages for context
+      const chatContext = analyzeMessagesForImageContext(chatMessages)
+      console.log("Chat context:", chatContext)
+      
+      // Step 2: Enhance prompt using chat context and memory
+      imageStatus.textContent = "Creating image prompt from conversation..."
+      const enhancedPrompt = await enhancePromptWithContext(chatContext, apiKey)
+      console.log("Chat messages analyzed:", chatContext.messageCount)
       console.log("Enhanced prompt:", enhancedPrompt)
+      
+      // Store in memory
+      const generationEntry = {
+        timestamp: Date.now(),
+        originalPrompt: `Chat context with ${chatContext.messageCount} messages`,
+        enhancedPrompt: enhancedPrompt,
+        chatContext: chatContext
+      }
+      imageGenerationHistory.push(generationEntry)
+      
+      // Keep only last 5 generations in memory
+      if (imageGenerationHistory.length > 5) {
+        imageGenerationHistory.shift()
+      }
       
       // Step 2: Generate image using enhanced prompt with Imagen 4
       imageStatus.textContent = "Generating your image..."
