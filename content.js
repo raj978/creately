@@ -1,5 +1,5 @@
 // Content script that runs on Discord pages
-console.log("Content script loaded!")
+console.log("[HACKATHON] Content script loaded!")
 
 let isActive = false
 let settings = {}
@@ -114,7 +114,7 @@ let messageProcessor = null
 // Initialize the extension
 async function init() {
   alert("Discord Design Assistant: Initializing...") // Temporary debug
-  console.log("Discord Design Assistant: Initializing...")
+  console.log("[HACKATHON] Discord Design Assistant: Initializing...")
 
   messageProcessor = new MessageProcessor()
 
@@ -135,7 +135,7 @@ async function init() {
 }
 
 function startMonitoring() {
-  console.log("Starting Discord message monitoring...")
+  console.log("[HACKATHON] Starting Discord message monitoring...")
   
   // Monitor for new messages using MutationObserver
   const observer = new MutationObserver((mutations) => {
@@ -169,7 +169,7 @@ function startMonitoring() {
 }
 
 function processMessage(messageElement) {
-  console.log("Received message");
+  console.log("[HACKATHON] -Received message");
   // Skip if already processed
   if (messageElement.dataset.processed) return
   messageElement.dataset.processed = "true"

@@ -1,7 +1,7 @@
 // Background script for handling API calls and storage
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("Discord Design Assistant installed")
+  console.log("[HACKATHON] Discord Design Assistant installed")
 })
 
 // Handle messages from content script
