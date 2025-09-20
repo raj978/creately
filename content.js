@@ -113,7 +113,6 @@ let messageProcessor = null
 
 // Initialize the extension
 async function init() {
-  alert("Discord Design Assistant: Initializing...") // Temporary debug
   console.log("[HACKATHON] Discord Design Assistant: Initializing...")
 
   messageProcessor = new MessageProcessor()
