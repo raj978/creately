@@ -1116,6 +1116,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     sendResponse({ messages: messagesList })
     return true // Keep message channel open for async response
+  } else if (request.type === "PASTE_IMAGE_TO_CHAT") {
+    console.log("[HACKATHON] Received request to paste image to chat")
+    
+    try {
+      // Find the file input
+      const fileInput = document.querySelector('.file-input')
+      if (!fileInput) {
+        sendResponse({ success: false, error: "File input not found" })
+        return
+      }
+      
+      // Convert base64 to blob
+      const byteCharacters = atob(request.base64Data)
+      const byteNumbers = new Array(byteCharacters.length)
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i)
+      }
+      const byteArray = new Uint8Array(byteNumbers)
+      const blob = new Blob([byteArray], { type: request.mimeType })
+      
+      // Create a file from the blob
+      const file = new File([blob], request.fileName, { 
+        type: request.mimeType 
+      })
+      
+      // Create a new FileList with our file
+      const dataTransfer = new DataTransfer()
+      dataTransfer.items.add(file)
+      fileInput.files = dataTransfer.files
+      
+      // Trigger the change event
+      const changeEvent = new Event('change', { bubbles: true })
+      fileInput.dispatchEvent(changeEvent)
+      
+      console.log("[HACKATHON] Image pasted to Discord successfully")
+      sendResponse({ success: true })
+      
+    } catch (error) {
+      console.error("[HACKATHON] Error pasting image:", error)
+      sendResponse({ success: false, error: error.message })
+    }
+    return true
   }
 })
 

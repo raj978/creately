@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const testButton = document.getElementById("testConnection")
   const messagesPreview = document.getElementById("messagesPreview")
   const generateImageButton = document.getElementById("generateImage")
+  const pasteImageButton = document.getElementById("pasteImageToChat")
   const openPanelButton = document.getElementById("openPanel")
   const statusText = document.getElementById("statusText")
   const messageCount = document.getElementById("messageCount")
@@ -301,6 +302,9 @@ Generate the image prompt now:`
           generatedImage.src = imageUrl
           imageStatus.textContent = "✨ Pink dragon generated successfully!"
           imageStatus.style.color = "#4CAF50"
+          
+          // Show the paste button
+          pasteImageButton.style.display = "block"
         } else if (data.predictions && data.predictions[0] && data.predictions[0].image) {
           // Alternative format - some responses may have 'image' field
           const imageData = data.predictions[0].image.bytesBase64Encoded || data.predictions[0].image
@@ -309,6 +313,9 @@ Generate the image prompt now:`
           generatedImage.src = imageUrl
           imageStatus.textContent = "✨ Pink dragon generated successfully!"
           imageStatus.style.color = "#4CAF50"
+          
+          // Show the paste button
+          pasteImageButton.style.display = "block"
         } else {
           console.error("Unexpected response structure:", data)
           throw new Error("No image data found in response. Check console for details.")
@@ -338,6 +345,37 @@ Generate the image prompt now:`
 
     generateImageButton.textContent = "🎨 Generate Image"
     generateImageButton.disabled = false
+  })
+
+  // Paste generated image to Discord
+  pasteImageButton.addEventListener("click", async () => {
+    try {
+      console.log("Pasting generated image to Discord...")
+      
+      // Get the current image data
+      const imageSrc = generatedImage.src
+      if (!imageSrc || imageSrc === '') {
+        alert('❌ No image to paste. Generate an image first.')
+        return
+      }
+      
+      // Extract base64 data from the data URL
+      const base64Data = imageSrc.split(',')[1] // Remove "data:image/png;base64," prefix
+      
+      // Send the image to the content script to paste into Discord
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      const result = await chrome.tabs.sendMessage(tab.id, { 
+        type: "PASTE_IMAGE_TO_CHAT",
+        base64Data: base64Data,
+        fileName: 'generated-image.png',
+        mimeType: 'image/png'
+      })
+      
+      
+    } catch (error) {
+      console.error("Error pasting image:", error)
+      alert('❌ Error: ' + error.message)
+    }
   })
 
   // Open design panel
