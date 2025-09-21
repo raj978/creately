@@ -1,5 +1,6 @@
 document.addEventListener("DOMContentLoaded", async () => {
   const apiKeyInput = document.getElementById("apiKey")
+  const showAssistantToggle = document.getElementById("showAssistantToggle")
   const autoToggle = document.getElementById("autoToggle")
   const saveButton = document.getElementById("saveSettings")
   const testButton = document.getElementById("testConnection")
@@ -148,12 +149,16 @@ Generate the image prompt now:`
   }
 
   // Load saved settings
-  const settings = await chrome.storage.sync.get(["apiKey", "autoGenerate", "messageCount"])
+  const settings = await chrome.storage.sync.get(["apiKey", "autoGenerate", "showAssistant", "messageCount"])
   if (settings.apiKey) {
     apiKeyInput.value = settings.apiKey
   }
   if (settings.autoGenerate) {
     autoToggle.classList.add("active")
+  }
+  // Show assistant toggle - default to true if not set
+  if (settings.showAssistant !== false) {
+    showAssistantToggle.classList.add("active")
   }
   if (settings.messageCount) {
     messageCount.textContent = settings.messageCount
@@ -167,6 +172,35 @@ Generate the image prompt now:`
   // Load chat messages
   await getChatMessages()
 
+  // Toggle show assistant with instant update
+  showAssistantToggle.addEventListener("click", async () => {
+    showAssistantToggle.classList.toggle("active")
+
+    // Get current state and save instantly
+    const showAssistant = showAssistantToggle.classList.contains("active")
+
+    // Save to storage
+    await chrome.storage.sync.set({ showAssistant: showAssistant })
+
+    // Send instant update to content script
+    try {
+      await chrome.tabs.sendMessage(tab.id, {
+        type: "SETTINGS_UPDATED",
+        settings: {
+          ...settings, // Keep existing settings
+          showAssistant: showAssistant
+        },
+      })
+
+      // Update local settings object
+      settings.showAssistant = showAssistant
+
+      console.log("Widget visibility toggled:", showAssistant ? "shown" : "hidden")
+    } catch (error) {
+      console.log("Could not send message to content script:", error)
+    }
+  })
+
   // Toggle auto-generate
   autoToggle.addEventListener("click", () => {
     autoToggle.classList.toggle("active")
@@ -175,6 +209,7 @@ Generate the image prompt now:`
   // Save settings
   saveButton.addEventListener("click", async () => {
     const apiKey = apiKeyInput.value.trim()
+    const showAssistant = showAssistantToggle.classList.contains("active")
     const autoGenerate = autoToggle.classList.contains("active")
 
     if (!apiKey) {
@@ -184,13 +219,14 @@ Generate the image prompt now:`
 
     await chrome.storage.sync.set({
       apiKey: apiKey,
+      showAssistant: showAssistant,
       autoGenerate: autoGenerate,
     })
 
     // Send settings to content script
     chrome.tabs.sendMessage(tab.id, {
       type: "SETTINGS_UPDATED",
-      settings: { apiKey, autoGenerate },
+      settings: { apiKey, showAssistant, autoGenerate },
     })
 
     alert("Settings saved successfully!")
