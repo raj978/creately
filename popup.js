@@ -79,7 +79,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     messagePollingInterval = setInterval(async () => {
       pollingAttempts++
-      console.log(`Polling attempt ${pollingAttempts}/${maxPollingAttempts}`)
       
       if (pollingAttempts >= maxPollingAttempts) {
         clearInterval(messagePollingInterval)
