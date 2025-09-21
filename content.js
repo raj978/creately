@@ -273,28 +273,22 @@ function processExistingMessages() {
 
 function startPeriodicMessageProcessing() {
   console.log("[HACKATHON] Starting periodic message processing every 3 seconds...")
-
   // Run immediately
   processExistingMessages()
 
   // Then run every 3 seconds
   setInterval(() => {
-    console.log("[HACKATHON] Running periodic message processing...")
     processExistingMessages()
   }, 3000)
 }
 
 function extractMessageData(messageElement) {
   console.log("[HACKATHON] === EXTRACTING MESSAGE DATA ===")
-
   // Extract sender/username
   let sender = ""
   const usernameElement = messageElement.querySelector('[class*="username"]')
   if (usernameElement) {
     sender = usernameElement.textContent || usernameElement.getAttribute('data-text') || ""
-    console.log("[HACKATHON] Sender found:", sender)
-  } else {
-    console.log("[HACKATHON] No username element found")
   }
 
   // Extract content
@@ -302,11 +296,9 @@ function extractMessageData(messageElement) {
   const messageContentElement = messageElement.querySelector('[class*="messageContent"]')
   if (messageContentElement) {
     content = messageContentElement.textContent || messageContentElement.innerText || ""
-    console.log("[HACKATHON] Content found:", content)
   } else {
     // Fallback: try to get text from the entire message element
     content = messageElement.textContent || messageElement.innerText || ""
-    console.log("[HACKATHON] No messageContent element found, using full text:", content)
   }
 
   // Extract timestamp if needed
@@ -314,7 +306,6 @@ function extractMessageData(messageElement) {
   const timestampElement = messageElement.querySelector('time')
   if (timestampElement) {
     timestamp = timestampElement.getAttribute('datetime') || timestampElement.textContent || ""
-    console.log("[HACKATHON] Timestamp found:", timestamp)
   }
 
   // Create the message object only if we have valid data
