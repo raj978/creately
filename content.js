@@ -121,22 +121,32 @@ let messageProcessor = null
 
 // Initialize the extension
 async function init() {
-  console.log("[HACKATHON] Discord Design Assistant: Initializing...")
+  try {
+    console.log("[HACKATHON] Discord Design Assistant: Initializing...")
 
-  messageProcessor = new MessageProcessor()
+    messageProcessor = new MessageProcessor()
 
-  // Load settings
-  settings = await chrome.storage.sync.get(["apiKey", "autoGenerate", "showAssistant"])
+    // Load settings
+    settings = await chrome.storage.sync.get(["apiKey", "autoGenerate", "showAssistant"])
+    console.log("[HACKATHON] Settings loaded:", settings)
 
-  // Initialize design generator if API key is available
-  if (settings.apiKey) {
-    designGenerator = new DesignGenerator(settings.apiKey)
+    // Initialize design generator if API key is available
+    if (settings.apiKey) {
+      designGenerator = new DesignGenerator(settings.apiKey)
+      console.log("[HACKATHON] Design generator initialized")
+    }
+
+    // Always activate and start monitoring
+    isActive = true
+    startMonitoring()
+
+    console.log("[HACKATHON] Initialization completed successfully")
+  } catch (error) {
+    console.error("[HACKATHON] Initialization failed:", error)
+    // Still try to set up basic functionality
+    isActive = true
+    messageProcessor = new MessageProcessor()
   }
-
-  // Always activate and start monitoring
-  isActive = true
-  startMonitoring()
-  createFloatingButton()
 }
 
 function startMonitoring() {
@@ -194,11 +204,11 @@ function printNode(messageElement) {
   console.log("[HACKATHON] Node tag:", messageElement.tagName)
   console.log("[HACKATHON] Node id:", messageElement.id)
   console.log("[HACKATHON] Node classes:", messageElement.className)
-  
+
   // Get Discord message content using the correct selector
   const messageContentElement = messageElement.querySelector('[class*="messageContent"]')
   let messageText = ""
-  
+
   if (messageContentElement) {
     messageText = messageContentElement.textContent || messageContentElement.innerText || ""
     console.log("[HACKATHON] Message content found:", messageText)
@@ -248,8 +258,17 @@ function printNode(messageElement) {
 
 function processExistingMessages() {
   const existingMessages = document.querySelectorAll('[class*="messageListItem"]');
-  messagesList = Array.from(existingMessages).map(extractMessageData)
-  displayMessagesList()
+  const extractedMessages = Array.from(existingMessages)
+    .map(extractMessageData)
+    .filter(msg => msg && msg.sender && msg.content) // Filter out invalid messages
+
+  console.log(`[HACKATHON] Extracted ${extractedMessages.length} valid messages from ${existingMessages.length} message elements`)
+
+  // Only update if we have valid messages
+  if (extractedMessages.length > 0) {
+    messagesList = extractedMessages
+    displayMessagesList()
+  }
 }
 
 function startPeriodicMessageProcessing() {
@@ -298,11 +317,18 @@ function extractMessageData(messageElement) {
     console.log("[HACKATHON] Timestamp found:", timestamp)
   }
 
-  // Create the message object
+  // Create the message object only if we have valid data
+  if (!sender.trim() || !content.trim()) {
+    console.log("[HACKATHON] Skipping message - missing sender or content")
+    console.log("[HACKATHON] === END EXTRACTION ===")
+    return null
+  }
+
   const messageData = {
     sender: sender.trim(),
+    name: sender.trim(), // Add both fields for compatibility
     content: content.trim(),
-    timestamp: timestamp.trim()
+    timestamp: timestamp.trim() || new Date().toISOString()
   }
 
   console.log("[HACKATHON] Extracted message data:", messageData)
@@ -492,7 +518,7 @@ function addEnhancedDesignButton(messageElement, analysis) {
   `
 
   briefButton.addEventListener("click", () => {
-    generateDesignBrief(analysis.text, analysis)
+    showNotification("Design Brief", "This feature has been moved to the popup extension", 3000)
   })
 
   mockupButton.addEventListener("click", () => {
@@ -500,7 +526,7 @@ function addEnhancedDesignButton(messageElement, analysis) {
   })
 
   analyzeButton.addEventListener("click", () => {
-    showAnalysisModal(analysis)
+    showNotification("Analysis", "Message analysis: " + JSON.stringify(analysis, null, 2).substring(0, 100) + "...", 5000)
   })
 
   // Add hover effects
@@ -854,241 +880,33 @@ function showNotification(title, message, timeout = 5000) {
   return notification
 }
 
-function createFloatingButton() {
-  const floatingBtn = document.createElement("div")
-  floatingBtn.innerHTML = "🎨"
-  floatingBtn.id = "design-assistant-float"
-  floatingBtn.style.cssText = `
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    width: 60px;
-    height: 60px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 24px;
-    cursor: pointer;
-    z-index: 10000;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    transition: all 0.3s;
-  `
 
-  floatingBtn.addEventListener("click", toggleDesignPanel)
-  floatingBtn.addEventListener("mouseenter", () => {
-    floatingBtn.style.transform = "scale(1.1)"
-  })
-  floatingBtn.addEventListener("mouseleave", () => {
-    floatingBtn.style.transform = "scale(1)"
-  })
 
-  document.body.appendChild(floatingBtn)
-}
 
-function toggleDesignPanel() {
-  if (designPanel) {
-    designPanel.remove()
-    designPanel = null
-  } else {
-    createDesignPanel()
+// Function to analyze chat messages for image context (from popup.js)
+function analyzeMessagesForImageContext(messages) {
+  const recentMessages = messages.slice(-10) // Last 10 messages for context
+  const conversationText = recentMessages.map(msg => {
+    const name = msg.sender || msg.name || 'Unknown'
+    const content = msg.content || ''
+    return content.trim() ? `${name}: ${content}` : null
+  }).filter(Boolean).join('\n')
+
+  return {
+    conversationContext: conversationText,
+    messageCount: recentMessages.length,
+    participants: [...new Set(recentMessages.map(msg => msg.sender || msg.name))],
+    hasImageRequests: conversationText.toLowerCase().includes('image') ||
+                     conversationText.toLowerCase().includes('picture') ||
+                     conversationText.toLowerCase().includes('design') ||
+                     conversationText.toLowerCase().includes('draw')
   }
 }
 
-function createDesignPanel() {
-  designPanel = document.createElement("div")
-  designPanel.id = "design-assistant-panel"
-  designPanel.innerHTML = `
-    <div class="panel-header">
-      <h3>🎨 Design Assistant</h3>
-      <button class="close-btn">×</button>
-    </div>
-    <div class="panel-content">
-      <div class="input-section">
-        <label>Design Request:</label>
-        <textarea id="designPrompt" placeholder="Describe the design you need..."></textarea>
-        <button id="generateBtn">Generate Design Brief</button>
-      </div>
-      <div class="output-section">
-        <label>Generated Brief:</label>
-        <div id="designOutput">Click "Generate Design Brief" to create a detailed design specification...</div>
-      </div>
-    </div>
-  `
+function showContextModal() {
+  // Analyze messages using popup.js logic
+  const chatContext = analyzeMessagesForImageContext(messagesList)
 
-  designPanel.style.cssText = `
-    position: fixed;
-    top: 50%;
-    right: 20px;
-    transform: translateY(-50%);
-    width: 400px;
-    max-height: 80vh;
-    background: white;
-    border-radius: 12px;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-    z-index: 10001;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    overflow: hidden;
-  `
-
-  // Add styles for panel content
-  const style = document.createElement("style")
-  style.textContent = `
-    #design-assistant-panel .panel-header {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      padding: 15px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    #design-assistant-panel .panel-header h3 {
-      margin: 0;
-      font-size: 16px;
-    }
-    
-    #design-assistant-panel .close-btn {
-      background: none;
-      border: none;
-      color: white;
-      font-size: 20px;
-      cursor: pointer;
-      padding: 0;
-      width: 24px;
-      height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-    
-    #design-assistant-panel .panel-content {
-      padding: 20px;
-      max-height: calc(80vh - 60px);
-      overflow-y: auto;
-    }
-    
-    #design-assistant-panel .input-section,
-    #design-assistant-panel .output-section {
-      margin-bottom: 20px;
-    }
-    
-    #design-assistant-panel label {
-      display: block;
-      margin-bottom: 8px;
-      font-weight: 600;
-      color: #333;
-    }
-    
-    #design-assistant-panel textarea {
-      width: 100%;
-      height: 80px;
-      padding: 10px;
-      border: 2px solid #e1e5e9;
-      border-radius: 6px;
-      font-size: 14px;
-      resize: vertical;
-      box-sizing: border-box;
-    }
-    
-    #design-assistant-panel button {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 14px;
-      margin-top: 10px;
-      transition: all 0.2s;
-    }
-    
-    #design-assistant-panel button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
-    }
-    
-    #design-assistant-panel #designOutput {
-      background: #f8f9fa;
-      border: 2px solid #e1e5e9;
-      border-radius: 6px;
-      padding: 15px;
-      min-height: 200px;
-      font-size: 14px;
-      line-height: 1.5;
-      white-space: pre-wrap;
-    }
-  `
-  document.head.appendChild(style)
-
-  document.body.appendChild(designPanel)
-
-  // Add event listeners
-  designPanel.querySelector(".close-btn").addEventListener("click", toggleDesignPanel)
-  designPanel.querySelector("#generateBtn").addEventListener("click", () => {
-    const prompt = designPanel.querySelector("#designPrompt").value
-    if (prompt.trim()) {
-      generateDesignBrief(prompt)
-    }
-  })
-}
-
-async function generateDesignBrief(prompt, analysis = null) {
-  if (!settings.apiKey) {
-    alert("Please set your Google Gemini API key in the extension popup first.")
-    return
-  }
-
-  const outputElement = document.getElementById("designOutput")
-  if (outputElement) {
-    outputElement.textContent = "Generating enhanced design brief..."
-  }
-
-  try {
-    let enhancedPrompt = prompt
-    if (analysis) {
-      const contextInfo = `
-Context Analysis:
-- Design Category: ${analysis.category.length > 0 ? analysis.category[0].name : "general"}
-- Urgency Level: ${analysis.urgency.level}
-- Budget Range: ${analysis.budget.estimated}
-- Client Sentiment: ${analysis.sentiment.sentiment}
-- Detected Colors: ${analysis.requirements.colors.join(", ") || "None specified"}
-- Style Preferences: ${analysis.requirements.style.join(", ") || "None specified"}
-- Deliverables: ${analysis.requirements.deliverables.join(", ") || "Standard files"}
-
-Original Request: "${prompt}"
-      `
-      enhancedPrompt = contextInfo
-    }
-
-    const response = await chrome.runtime.sendMessage({
-      type: "GENERATE_DESIGN",
-      prompt: enhancedPrompt,
-      apiKey: settings.apiKey,
-      analysis: analysis,
-    })
-
-    if (response.success) {
-      if (outputElement) {
-        outputElement.textContent = response.data
-      } else {
-        // Show in a notification if panel is not open
-        showNotification("Enhanced Design Brief Generated", response.data.substring(0, 100) + "...")
-      }
-    } else {
-      throw new Error(response.error)
-    }
-  } catch (error) {
-    console.error("Error generating design brief:", error)
-    if (outputElement) {
-      outputElement.textContent = "Error generating design brief: " + error.message
-    }
-  }
-}
-
-function showAnalysisModal(analysis) {
   const modal = document.createElement("div")
   modal.style.cssText = `
     position: fixed;
@@ -1096,8 +914,8 @@ function showAnalysisModal(analysis) {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 10003;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10005;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1108,31 +926,67 @@ function showAnalysisModal(analysis) {
     background: white;
     border-radius: 12px;
     padding: 24px;
-    max-width: 500px;
+    max-width: 700px;
     max-height: 80vh;
     overflow-y: auto;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    width: 90%;
   `
-
-  const report = messageProcessor.generateAnalysisReport(analysis)
 
   content.innerHTML = `
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-      <h2 style="margin: 0; color: #333;">Message Analysis</h2>
-      <button id="closeModal" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+      <h2 style="margin: 0; color: #333;">💬 Conversation Context</h2>
+      <button id="closeContextModal" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
     </div>
-    <pre style="white-space: pre-wrap; font-family: inherit; line-height: 1.5; color: #555;">${report}</pre>
-    <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #eee;">
-      <button id="generateFromAnalysis" style="
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+    <div style="margin-bottom: 15px; padding: 12px; background: #f0f7ff; border-radius: 8px; border-left: 3px solid #0066cc;">
+      <div style="font-size: 12px; color: #0066cc;">
+        <strong>📊 Context Summary:</strong><br>
+        Messages: ${chatContext.messageCount} | Participants: ${chatContext.participants.length} | Has Design Requests: ${chatContext.hasImageRequests ? 'Yes' : 'No'}
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #667eea; margin-bottom: 10px;">Recent Conversation:</h3>
+      <div style="
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 3px solid #667eea;
+        font-family: monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        max-height: 300px;
+        overflow-y: auto;
+      ">
+        ${chatContext.conversationContext || 'No conversation context available'}
+      </div>
+    </div>
+
+    <div style="margin-bottom: 20px;">
+      <h3 style="color: #667eea; margin-bottom: 10px;">Participants:</h3>
+      <div style="
+        background: #f8f9fa;
+        padding: 10px;
+        border-radius: 6px;
+        font-size: 12px;
+      ">
+        ${chatContext.participants.length > 0 ? chatContext.participants.join(', ') : 'No participants detected'}
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+      <button id="copyContext" style="
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
         color: white;
         border: none;
-        padding: 12px 24px;
+        padding: 8px 16px;
         border-radius: 6px;
         cursor: pointer;
-        font-size: 14px;
-        width: 100%;
-      ">Generate Design Brief from Analysis</button>
+        font-size: 12px;
+        flex: 1;
+      ">📋 Copy Context</button>
     </div>
   `
 
@@ -1140,13 +994,13 @@ function showAnalysisModal(analysis) {
   document.body.appendChild(modal)
 
   // Event listeners
-  content.querySelector("#closeModal").addEventListener("click", () => {
+  content.querySelector("#closeContextModal").addEventListener("click", () => {
     modal.remove()
   })
 
-  content.querySelector("#generateFromAnalysis").addEventListener("click", () => {
-    modal.remove()
-    generateDesignBrief(analysis.text, analysis)
+  content.querySelector("#copyContext").addEventListener("click", () => {
+    navigator.clipboard.writeText(chatContext.conversationContext)
+    showNotification("Context Copied", "Conversation context copied to clipboard", 2000)
   })
 
   modal.addEventListener("click", (e) => {
@@ -1314,25 +1168,35 @@ function createStatusWidget() {
     </div>
 
     <div style="border-top: 1px solid #e5e7eb; padding-top: 8px;">
-      <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+      <div style="display: flex; gap: 4px; margin-bottom: 6px;">
         <button id="viewMessageLog" style="
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: white;
           border: none;
-          padding: 6px 12px;
+          padding: 6px 8px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 10px;
+          font-size: 9px;
           flex: 1;
-        ">📝 View Messages</button>
+        ">📝 Messages</button>
+        <button id="viewContext" style="
+          background: linear-gradient(135deg, #16a34a 0%, #059669 100%);
+          color: white;
+          border: none;
+          padding: 6px 8px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 9px;
+          flex: 1;
+        ">💬 Context</button>
         <button id="remonitorButton" style="
           background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
           color: white;
           border: none;
-          padding: 6px 12px;
+          padding: 6px 8px;
           border-radius: 4px;
           cursor: pointer;
-          font-size: 10px;
+          font-size: 9px;
           flex: 1;
         ">🔄 Re-monitor</button>
       </div>
@@ -1359,6 +1223,11 @@ function createStatusWidget() {
     showMessageLogModal()
   })
 
+  // View context button
+  statusWidget.querySelector("#viewContext").addEventListener("click", () => {
+    showContextModal()
+  })
+
   // Re-monitor button
   statusWidget.querySelector("#remonitorButton").addEventListener("click", () => {
     remonitorMessages()
@@ -1378,12 +1247,25 @@ function updateStatusWidget() {
 
   // Update AI status based on API key
   const aiStatusElement = statusWidget.querySelector("#aiStatus")
+  const previousText = aiStatusElement.textContent
+
   if (settings.apiKey) {
     aiStatusElement.textContent = "Connected"
     aiStatusElement.style.color = "#16a34a"
+    console.log("[HACKATHON] AI Status updated: Connected (API key present)")
   } else {
     aiStatusElement.textContent = "No API Key"
     aiStatusElement.style.color = "#dc3545"
+    console.log("[HACKATHON] AI Status updated: No API Key")
+  }
+
+  // Add brief flash animation if status changed
+  if (previousText !== aiStatusElement.textContent) {
+    aiStatusElement.style.transition = "all 0.3s ease"
+    aiStatusElement.style.transform = "scale(1.1)"
+    setTimeout(() => {
+      aiStatusElement.style.transform = "scale(1)"
+    }, 300)
   }
 
   // Update buttons status
@@ -1654,8 +1536,13 @@ function exportProcessedMessages() {
 }
 
 // Listen for messages from popup
-chrome.runtime.onMessage.addListener((request) => {
-  if (request.type === "SETTINGS_UPDATED") {
+chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
+  console.log("[HACKATHON] Received message from popup:", request.type)
+
+  if (request.type === "PING") {
+    sendResponse({ pong: true, timestamp: Date.now() })
+    return true
+  } else if (request.type === "SETTINGS_UPDATED") {
     settings = request.settings
     if (settings.apiKey) {
       designGenerator = new DesignGenerator(settings.apiKey)
@@ -1678,29 +1565,31 @@ chrome.runtime.onMessage.addListener((request) => {
     }
 
     console.log("[HACKATHON] Settings updated:", settings)
-  } else if (request.type === "OPEN_PANEL") {
-    if (!designPanel) {
-      createDesignPanel()
-    }
   } else if (request.type === "GET_MESSAGES") {
-    // Return current messages list
-    console.log("[HACKATHON] Popup requested messages, returning:", messagesList.length, "messages")
-    
-    // If no messages found, add some test messages for development
-    if (messagesList.length === 0) {
-      messagesList = [
-        { sender: "Alice", content: "I need a logo design for my bakery" },
-        { sender: "Bob", content: "Can you make it colorful and fun?" },
-        { sender: "Charlie", content: "Maybe add some cute pastry illustrations" }
-      ]
-      console.log("[HACKATHON] Added test messages for development")
+    try {
+      // Return current messages list
+      console.log("[HACKATHON] Popup requested messages, returning:", messagesList.length, "messages")
+
+      // If no messages found, add some test messages for development
+      if (messagesList.length === 0) {
+        messagesList = [
+          { sender: "Alice", content: "I need a logo design for my bakery" },
+          { sender: "Bob", content: "Can you make it colorful and fun?" },
+          { sender: "Charlie", content: "Maybe add some cute pastry illustrations" }
+        ]
+        console.log("[HACKATHON] Added test messages for development")
+      }
+
+      sendResponse({ messages: messagesList })
+      return true // Keep message channel open for async response
+    } catch (error) {
+      console.error("[HACKATHON] Error handling GET_MESSAGES:", error)
+      sendResponse({ messages: [], error: error.message })
+      return true
     }
-    
-    sendResponse({ messages: messagesList })
-    return true // Keep message channel open for async response
   } else if (request.type === "PASTE_IMAGE_TO_CHAT") {
     console.log("[HACKATHON] Received request to paste image to chat")
-    
+
     try {
       // Find the file input
       const fileInput = document.querySelector('.file-input')
@@ -1708,7 +1597,7 @@ chrome.runtime.onMessage.addListener((request) => {
         sendResponse({ success: false, error: "File input not found" })
         return
       }
-      
+
       // Convert base64 to blob
       const byteCharacters = atob(request.base64Data)
       const byteNumbers = new Array(byteCharacters.length)
@@ -1717,24 +1606,24 @@ chrome.runtime.onMessage.addListener((request) => {
       }
       const byteArray = new Uint8Array(byteNumbers)
       const blob = new Blob([byteArray], { type: request.mimeType })
-      
+
       // Create a file from the blob
-      const file = new File([blob], request.fileName, { 
-        type: request.mimeType 
+      const file = new File([blob], request.fileName, {
+        type: request.mimeType
       })
-      
+
       // Create a new FileList with our file
       const dataTransfer = new DataTransfer()
       dataTransfer.items.add(file)
       fileInput.files = dataTransfer.files
-      
+
       // Trigger the change event
       const changeEvent = new Event('change', { bubbles: true })
       fileInput.dispatchEvent(changeEvent)
-      
+
       console.log("[HACKATHON] Image pasted to Discord successfully")
       sendResponse({ success: true })
-      
+
     } catch (error) {
       console.error("[HACKATHON] Error pasting image:", error)
       sendResponse({ success: false, error: error.message })

@@ -21,22 +21,41 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Declare chrome variable
   const chrome = window.chrome
 
+  // Function to check if content script is responding
+  async function pingContentScript() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
+      const response = await chrome.tabs.sendMessage(tab.id, { type: "PING" })
+      return response && response.pong === true
+    } catch (error) {
+      console.error("Content script ping failed:", error)
+      return false
+    }
+  }
+
   // Function to get messages from content script
   async function getChatMessages() {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       console.log("Current tab URL:", tab.url)
-      
+
+      // First check if content script is responding
+      const isResponding = await pingContentScript()
+      if (!isResponding) {
+        messagesPreview.textContent = "Content script not responding - try refreshing the page"
+        return []
+      }
+
       const response = await chrome.tabs.sendMessage(tab.id, { type: "GET_MESSAGES" })
       console.log("Response from content script:", response)
-      
+
       if (response && response.messages) {
         chatMessages = response.messages
         console.log("Received messages:", chatMessages.length)
         updateMessagesPreview()
         return chatMessages
       } else {
-        messagesPreview.textContent = "Content script not responding - try refreshing the page"
+        messagesPreview.textContent = "No messages found in current chat"
         return []
       }
     } catch (error) {
