@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Store for chat messages and generation memory
   let chatMessages = []
   let imageGenerationHistory = []
+  let currentProject = ""
   let messagePollingInterval = null
   let pollingAttempts = 0
   const maxPollingAttempts = 20 // Stop after 20 attempts (about 1 minute)
@@ -172,6 +173,7 @@ Instructions:
 4. If there are multiple suggestions, synthesize them into a cohesive concept
 5. Include artistic style, composition, lighting, and quality descriptors
 6. Bias the output to be skewed towards the most recent messages in the conversation
+7. If there are mentions of a format (etc. Youtube thumbnail, Twitter post, Instagram post, etc.), research the format to include the dimensions, and also make sure to include the format name.
 
 Requirements:
 - Create a prompt that reflects the conversation context
