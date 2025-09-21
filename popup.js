@@ -16,12 +16,15 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Store for chat messages and generation memory
   let chatMessages = []
   let imageGenerationHistory = []
+  let messagePollingInterval = null
+  let pollingAttempts = 0
+  const maxPollingAttempts = 20 // Stop after 20 attempts (about 1 minute)
 
   // Declare chrome variable
   const chrome = window.chrome
 
   // Function to get messages from content script
-  async function getChatMessages() {
+  async function getChatMessages(showPollingStatus = false) {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true })
       console.log("Current tab URL:", tab.url)
@@ -32,27 +35,73 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (response && response.messages) {
         chatMessages = response.messages
         console.log("Received messages:", chatMessages.length)
+        
+        // Stop polling if we found messages
+        if (messagePollingInterval) {
+          clearInterval(messagePollingInterval)
+          messagePollingInterval = null
+          pollingAttempts = 0
+        }
+        
         updateMessagesPreview()
         return chatMessages
       } else {
-        messagesPreview.textContent = "Content script not responding - try refreshing the page"
+        if (showPollingStatus) {
+          messagesPreview.textContent = "Content script not responding - try refreshing the page"
+        }
         return []
       }
     } catch (error) {
       console.error("Error getting chat messages:", error)
       if (error.message.includes("Could not establish connection")) {
-        messagesPreview.textContent = "Content script not loaded - refresh the page"
+        if (showPollingStatus) {
+          messagesPreview.textContent = "Content script not loaded - refresh the page"
+        }
       } else {
-        messagesPreview.textContent = `Error: ${error.message}`
+        if (showPollingStatus) {
+          messagesPreview.textContent = `Error: ${error.message}`
+        }
       }
     }
     return []
   }
 
+  // Function to start polling for messages
+  function startMessagePolling() {
+    if (messagePollingInterval) {
+      return // Already polling
+    }
+    
+    pollingAttempts = 0
+    messagesPreview.textContent = "Looking for messages..."
+    generateImageButton.textContent = "🎨 Searching for Messages..."
+    
+    messagePollingInterval = setInterval(async () => {
+      pollingAttempts++
+      console.log(`Polling attempt ${pollingAttempts}/${maxPollingAttempts}`)
+      
+      if (pollingAttempts >= maxPollingAttempts) {
+        clearInterval(messagePollingInterval)
+        messagePollingInterval = null
+        messagesPreview.textContent = "No messages found after searching"
+        generateImageButton.textContent = "🎨 No Messages to Generate From"
+        return
+      }
+      
+      // Update status text
+      messagesPreview.textContent = `Looking for messages... (${pollingAttempts}/${maxPollingAttempts})`
+      
+      // Try to get messages
+      await getChatMessages(false) // Don't show error messages during polling
+      
+    }, 3000) // Poll every 3 seconds
+  }
+
   // Function to update messages preview
   function updateMessagesPreview() {
     if (chatMessages.length === 0) {
-      messagesPreview.textContent = "No messages found"
+      // Start polling if we haven't found messages yet
+      startMessagePolling()
       return
     }
 
@@ -64,6 +113,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }).filter(Boolean).join('\n')
     
     messagesPreview.textContent = preview || "Loading messages..."
+    
+    // Enable the generate button when messages are available
+    generateImageButton.disabled = false
+    generateImageButton.textContent = "🎨 Generate Image from Chat"
   }
 
   // Function to analyze chat messages for image context
@@ -165,8 +218,12 @@ Generate the image prompt now:`
   statusText.textContent = "Active"
   statusText.style.color = "#4CAF50"
   
-  // Load chat messages
-  await getChatMessages()
+  // Set initial button state (disabled until messages are loaded)
+  generateImageButton.disabled = true
+  generateImageButton.textContent = "🎨 Loading Messages..."
+  
+  // Load chat messages (this will start polling if no messages found)
+  await getChatMessages(true)
 
   // Toggle auto-generate
   autoToggle.addEventListener("click", () => {
@@ -383,5 +440,13 @@ Generate the image prompt now:`
   openPanelButton.addEventListener("click", () => {
     chrome.tabs.sendMessage(tab.id, { type: "OPEN_PANEL" })
     window.close()
+  })
+
+  // Cleanup polling when popup is closed
+  window.addEventListener("beforeunload", () => {
+    if (messagePollingInterval) {
+      clearInterval(messagePollingInterval)
+      messagePollingInterval = null
+    }
   })
 })

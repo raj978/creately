@@ -1104,16 +1104,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Return current messages list
     console.log("[HACKATHON] Popup requested messages, returning:", messagesList.length, "messages")
     
-    // If no messages found, add some test messages for development
-    if (messagesList.length === 0) {
-      messagesList = [
-        { sender: "Alice", content: "I need a logo design for my bakery" },
-        { sender: "Bob", content: "Can you make it colorful and fun?" },
-        { sender: "Charlie", content: "Maybe add some cute pastry illustrations" }
-      ]
-      console.log("[HACKATHON] Added test messages for development")
-    }
-    
     sendResponse({ messages: messagesList })
     return true // Keep message channel open for async response
   } else if (request.type === "PASTE_IMAGE_TO_CHAT") {
