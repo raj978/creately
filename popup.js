@@ -118,6 +118,7 @@ Instructions:
 3. Create a detailed image generation prompt that captures the essence of what's being discussed
 4. If there are multiple suggestions, synthesize them into a cohesive concept
 5. Include artistic style, composition, lighting, and quality descriptors
+6. Bias the output to be skewed towards the most recent messages in the conversation
 
 Requirements:
 - Create a prompt that reflects the conversation context
