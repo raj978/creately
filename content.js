@@ -6,6 +6,13 @@ let settings = {}
 let messageCount = 0
 let designPanel = null
 let designGenerator = null
+let extractionActive = false
+let extractionConfirmed = false
+let processedMessageCount = 0
+let statusWidget = null
+let processedMessages = []
+let messageLogModal = null
+let currentChannelUrl = ''
 
 class MessageProcessor {
   analyzeMessage(messageText, messageElement) {
@@ -118,7 +125,7 @@ async function init() {
   messageProcessor = new MessageProcessor()
 
   // Load settings
-  settings = await chrome.storage.sync.get(["apiKey", "autoGenerate"])
+  settings = await chrome.storage.sync.get(["apiKey", "autoGenerate", "showAssistant"])
 
   // Initialize design generator if API key is available
   if (settings.apiKey) {
@@ -135,15 +142,23 @@ async function init() {
 
 function startMonitoring() {
   console.log("[HACKATHON] Starting Discord message monitoring...")
-  
+
+  // Show confirmation dialog before starting extraction
+  if (!extractionConfirmed) {
+    showExtractionConfirmationDialog()
+    return
+  }
+
   // Monitor for new messages using MutationObserver
   const observer = new MutationObserver((mutations) => {
+    if (!extractionActive) return
+
     mutations.forEach((mutation) => {
       if (mutation.type === "childList") {
         mutation.addedNodes.forEach((node) => {
           if (node.nodeType === Node.ELEMENT_NODE) {
-            // Look for new Discord message elements
-            const messages = node.querySelectorAll('[class*="message-"], [class*="messageListItem-"], [id*="chat-messages-"]')
+            // Updated selectors for Discord's current DOM structure
+            const messages = node.querySelectorAll('li[id^="chat-messages-"].messageListItem__5126c, [class*="message__"], [class*="messageListItem-"]')
             messages.forEach(processMessage)
           }
         })
@@ -162,23 +177,118 @@ function startMonitoring() {
     })
   }
 
-  // Also process existing messages
-  const existingMessages = document.querySelectorAll('[class*="message-"], [class*="messageListItem-"], [id*="chat-messages-"]')
-  existingMessages.forEach(processMessage)
+  // Create status widget only if showAssistant is enabled (defaults to true)
+  if (settings.showAssistant !== false) {
+    createStatusWidget()
+  }
+
+  // Process existing messages with improved selectors
+  console.log('[HACKATHON] Searching for messages...')
+
+  // Try multiple selector strategies
+  let existingMessages = []
+
+  // Strategy 1: Discord's current structure
+  existingMessages = document.querySelectorAll('li[id^="chat-messages-"]')
+  console.log(`[HACKATHON] Strategy 1 - ID selector found: ${existingMessages.length} messages`)
+
+  // Strategy 2: Class-based selectors
+  if (existingMessages.length === 0) {
+    existingMessages = document.querySelectorAll('[class*="messageListItem"]')
+    console.log(`[HACKATHON] Strategy 2 - messageListItem found: ${existingMessages.length} messages`)
+  }
+
+  // Strategy 3: More general message selectors
+  if (existingMessages.length === 0) {
+    existingMessages = document.querySelectorAll('[class*="message"][role="article"]')
+    console.log(`[HACKATHON] Strategy 3 - message articles found: ${existingMessages.length} messages`)
+  }
+
+  // Strategy 4: Very general approach
+  if (existingMessages.length === 0) {
+    existingMessages = document.querySelectorAll('[role="article"]')
+    console.log(`[HACKATHON] Strategy 4 - all articles found: ${existingMessages.length} messages`)
+  }
+
+  extractionActive = true // Ensure extraction is active for processing
+  console.log(`[HACKATHON] Final count: ${existingMessages.length} messages to process`)
+
+  existingMessages.forEach((message, index) => {
+    console.log(`[HACKATHON] Processing existing message ${index + 1}/${existingMessages.length}`)
+    processMessage(message)
+  })
 }
 
 function processMessage(messageElement) {
   console.log("[HACKATHON] -Received message");
+  console.log("[HACKATHON] Message element:", messageElement.tagName, messageElement.className, messageElement.id);
+
   // Skip if already processed
-  if (messageElement.dataset.processed) return
+  if (messageElement.dataset.processed) {
+    console.log("[HACKATHON] Skipping - already processed")
+    return
+  }
   messageElement.dataset.processed = "true"
 
-  // Get Discord message content more specifically
-  const messageContentElement = messageElement.querySelector('[class*="messageContent-"], [class*="markup-"]')
-  const messageText = messageContentElement ? (messageContentElement.textContent || messageContentElement.innerText) : (messageElement.textContent || messageElement.innerText)
+  // Removed visual indicators per user request
 
-  // Skip if no meaningful text content
-  if (!messageText || messageText.trim().length < 5) return
+  // Simplified content extraction with detailed logging
+  let messageText = ''
+  let usedSelector = 'none'
+
+  // Try simpler, more reliable selectors first
+  const selectors = [
+    '[class*="messageContent"]',
+    '[class*="markup"]',
+    '.messageContent_c19a55',
+    '.markup__75297'
+  ]
+
+  console.log("[HACKATHON] Trying content selectors...")
+  for (const selector of selectors) {
+    const contentElement = messageElement.querySelector(selector)
+    console.log(`[HACKATHON] Selector "${selector}":`, contentElement ? 'found' : 'not found')
+
+    if (contentElement && contentElement.textContent.trim()) {
+      messageText = contentElement.textContent.trim()
+      usedSelector = selector
+      console.log(`[HACKATHON] Using selector "${selector}", text: "${messageText.substring(0, 30)}..."`)
+      break
+    }
+  }
+
+  // Simple fallback - just get all text and clean it
+  if (!messageText) {
+    console.log("[HACKATHON] No content selector worked, using fallback...")
+    messageText = messageElement.textContent.trim()
+
+    // Remove obvious UI elements
+    messageText = messageText.replace(/\[(.*?)\]/g, '') // Remove timestamps [2:38 PM]
+    messageText = messageText.replace(/👍|🤣|🔥/g, '') // Remove reaction emojis
+    messageText = messageText.trim()
+
+    usedSelector = 'fallback'
+    console.log(`[HACKATHON] Fallback text: "${messageText.substring(0, 30)}..."`)
+  }
+
+  // Skip if no meaningful text content (reduced threshold)
+  if (!messageText || messageText.trim().length < 2) {
+    console.log("[HACKATHON] Skipping message - no content or too short:", messageText)
+    return
+  }
+
+  console.log(`[HACKATHON] ✅ Processing message with ${usedSelector}: "${messageText.substring(0, 50)}${messageText.length > 50 ? '...' : ''}"`)
+  console.log(`[HACKATHON] Full message text (${messageText.length} chars):`, messageText)
+
+  // Update processed count
+  processedMessageCount++
+
+  // Store the processed message
+  storeProcessedMessage(messageText, messageElement)
+
+  updateStatusWidget()
+
+  // Removed visual indicators per user request
 
   const analysis = messageProcessor.analyzeMessage(messageText, messageElement)
 
@@ -186,13 +296,18 @@ function processMessage(messageElement) {
     messageCount++
     updateMessageCount()
 
-    addEnhancedDesignButton(messageElement, analysis)
+    // Only show design buttons if the setting is enabled (defaults to true)
+    if (settings.showAssistant !== false) {
+      addEnhancedDesignButton(messageElement, analysis)
+    }
 
     // Auto-generate if enabled
     if (settings.autoGenerate && settings.apiKey) {
       generateDesignBrief(analysis.text, analysis)
     }
   }
+
+  // Removed visual indicators per user request
 }
 
 function addEnhancedDesignButton(messageElement, analysis) {
@@ -215,7 +330,7 @@ function addEnhancedDesignButton(messageElement, analysis) {
   `
 
   const category = analysis.category.length > 0 ? analysis.category[0].name : "general"
-  const confidence = Math.round(analysis.confidence * 100)
+  const confidence = analysis.confidence ? Math.round(analysis.confidence * 100) : 50
 
   analysisPreview.innerHTML = `
     📊 ${category} design • ⚡ ${analysis.urgency.level} urgency • 💰 ${analysis.budget.level} budget • 🎯 ${confidence}% confidence
@@ -278,22 +393,19 @@ function addEnhancedDesignButton(messageElement, analysis) {
     generateVisualMockup(analysis.text, category, analysis)
   })
 
-  analyzeButton
-    .addEventListener("click", () => {
-      showAnalysisModal(analysis)
-    })
+  analyzeButton.addEventListener("click", () => {
+    showAnalysisModal(analysis)
+  })
 
-    [
-      // Add hover effects
-      (briefButton, mockupButton, analyzeButton)
-    ].forEach((btn) => {
-      btn.addEventListener("mouseenter", () => {
-        btn.style.transform = "scale(1.05)"
-      })
-      btn.addEventListener("mouseleave", () => {
-        btn.style.transform = "scale(1)"
-      })
+  // Add hover effects
+  [briefButton, mockupButton, analyzeButton].forEach((btn) => {
+    btn.addEventListener("mouseenter", () => {
+      btn.style.transform = "scale(1.05)"
     })
+    btn.addEventListener("mouseleave", () => {
+      btn.style.transform = "scale(1)"
+    })
+  })
 
   buttonContainer.appendChild(analysisPreview)
   buttonGroup.appendChild(briefButton)
@@ -942,13 +1054,524 @@ function updateMessageCount() {
   chrome.storage.sync.set({ messageCount: messageCount })
 }
 
+function showExtractionConfirmationDialog() {
+  const modal = document.createElement("div")
+  modal.id = "extraction-confirmation-modal"
+  modal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10004;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `
+
+  const content = document.createElement("div")
+  content.style.cssText = `
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 500px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  `
+
+  content.innerHTML = `
+    <div style="text-align: center; margin-bottom: 20px;">
+      <h2 style="margin: 0; color: #333; margin-bottom: 10px;">🔍 Message Extraction Confirmation</h2>
+      <p style="color: #666; margin: 0;">The Discord Design Assistant would like to start monitoring and analyzing messages in this chat.</p>
+    </div>
+
+    <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+      <h3 style="margin: 0 0 10px 0; color: #667eea; font-size: 14px;">📋 What will be collected:</h3>
+      <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 13px;">
+        <li>Message text content from this Discord chat</li>
+        <li>Analysis of design requests and requirements</li>
+        <li>Message metadata for processing</li>
+      </ul>
+    </div>
+
+    <div style="background: #e7f3ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 3px solid #0066cc;">
+      <h3 style="margin: 0 0 10px 0; color: #0066cc; font-size: 14px;">🔒 Privacy & Control:</h3>
+      <ul style="margin: 0; padding-left: 20px; color: #0066cc; font-size: 13px;">
+        <li>You can stop extraction at any time</li>
+        <li>Messages are processed locally in your browser</li>
+        <li>Only design-related content is analyzed</li>
+        <li>Visual feedback shows what's being processed</li>
+      </ul>
+    </div>
+
+    <div style="display: flex; gap: 12px; margin-top: 20px;">
+      <button id="denyExtraction" style="
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        flex: 1;
+      ">Cancel</button>
+      <button id="confirmExtraction" style="
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        flex: 1;
+      ">Start Monitoring</button>
+    </div>
+  `
+
+  modal.appendChild(content)
+  document.body.appendChild(modal)
+
+  // Event listeners
+  content.querySelector("#confirmExtraction").addEventListener("click", () => {
+    extractionConfirmed = true
+    extractionActive = true
+    modal.remove()
+    startMonitoring()
+    showNotification("Extraction Started", "Now monitoring Discord messages for design requests", 3000)
+  })
+
+  content.querySelector("#denyExtraction").addEventListener("click", () => {
+    modal.remove()
+    showNotification("Extraction Cancelled", "Message monitoring was cancelled", 3000)
+  })
+}
+
+function createStatusWidget() {
+  if (statusWidget) return // Don't create duplicate
+
+  statusWidget = document.createElement("div")
+  statusWidget.id = "discord-extraction-status"
+  statusWidget.style.cssText = `
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    background: white;
+    border: 2px solid #667eea;
+    border-radius: 10px;
+    padding: 15px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    z-index: 10002;
+    min-width: 200px;
+    transition: all 0.3s ease;
+  `
+
+  statusWidget.innerHTML = `
+    <div style="display: flex; justify-content: center; align-items: center; margin-bottom: 10px;">
+      <h3 style="margin: 0; color: #667eea; font-size: 14px;">🎨 Design Assistant</h3>
+    </div>
+
+    <div style="display: flex; align-items: center; margin-bottom: 8px;">
+      <div id="connectionStatus" style="
+        width: 8px;
+        height: 8px;
+        background: #16a34a;
+        border-radius: 50%;
+        margin-right: 8px;
+        animation: pulse 2s infinite;
+      "></div>
+      <span style="color: #16a34a; font-weight: 500;">Monitoring Active</span>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; margin-bottom: 10px;">
+      <div>
+        <span style="color: #666;">Messages Found:</span>
+        <span id="totalMessages" style="font-weight: bold; color: #333;">0</span>
+      </div>
+      <div>
+        <span style="color: #666;">Processed:</span>
+        <span id="processedMessages" style="font-weight: bold; color: #667eea;">0</span>
+      </div>
+      <div>
+        <span style="color: #666;">Design Requests:</span>
+        <span id="designRequests" style="font-weight: bold; color: #f59e0b;">0</span>
+      </div>
+      <div>
+        <span style="color: #666;">AI Status:</span>
+        <span id="aiStatus" style="font-weight: bold; color: #16a34a;">Ready</span>
+      </div>
+      <div>
+        <span style="color: #666;">Buttons:</span>
+        <span id="buttonsStatus" style="font-weight: bold; color: #16a34a;">Enabled</span>
+      </div>
+    </div>
+
+    <div style="border-top: 1px solid #e5e7eb; padding-top: 8px;">
+      <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+        <button id="viewMessageLog" style="
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 10px;
+          flex: 1;
+        ">📝 View Messages</button>
+        <button id="remonitorButton" style="
+          background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+          color: white;
+          border: none;
+          padding: 6px 12px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 10px;
+          flex: 1;
+        ">🔄 Re-monitor</button>
+      </div>
+    </div>
+  `
+
+  // Add CSS for pulse animation
+  const style = document.createElement("style")
+  style.textContent = `
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+  `
+  document.head.appendChild(style)
+
+  document.body.appendChild(statusWidget)
+
+  // Removed toggle extraction button per user request
+
+  // View message log button
+  statusWidget.querySelector("#viewMessageLog").addEventListener("click", () => {
+    showMessageLogModal()
+  })
+
+  // Re-monitor button
+  statusWidget.querySelector("#remonitorButton").addEventListener("click", () => {
+    remonitorMessages()
+  })
+
+  updateStatusWidget()
+}
+
+function updateStatusWidget() {
+  if (!statusWidget) return
+
+  const totalMessages = document.querySelectorAll('li[id^="chat-messages-"].messageListItem__5126c, [class*="message__"], [class*="messageListItem-"]').length
+
+  statusWidget.querySelector("#totalMessages").textContent = totalMessages
+  statusWidget.querySelector("#processedMessages").textContent = processedMessageCount
+  statusWidget.querySelector("#designRequests").textContent = messageCount
+
+  // Update AI status based on API key
+  const aiStatusElement = statusWidget.querySelector("#aiStatus")
+  if (settings.apiKey) {
+    aiStatusElement.textContent = "Connected"
+    aiStatusElement.style.color = "#16a34a"
+  } else {
+    aiStatusElement.textContent = "No API Key"
+    aiStatusElement.style.color = "#dc3545"
+  }
+
+  // Update buttons status
+  const buttonsStatusElement = statusWidget.querySelector("#buttonsStatus")
+  if (settings.showAssistant !== false) {
+    buttonsStatusElement.textContent = "Enabled"
+    buttonsStatusElement.style.color = "#16a34a"
+  } else {
+    buttonsStatusElement.textContent = "Disabled"
+    buttonsStatusElement.style.color = "#dc3545"
+  }
+}
+
+function toggleExtraction() {
+  extractionActive = !extractionActive
+
+  const toggleButton = statusWidget.querySelector("#toggleExtraction")
+  const connectionStatus = statusWidget.querySelector("#connectionStatus")
+  const statusText = statusWidget.querySelector("#connectionStatus").nextElementSibling
+
+  if (extractionActive) {
+    toggleButton.textContent = "Stop"
+    toggleButton.style.background = "#dc3545"
+    connectionStatus.style.background = "#16a34a"
+    statusText.textContent = "Monitoring Active"
+    statusText.style.color = "#16a34a"
+    showNotification("Extraction Resumed", "Message monitoring resumed", 2000)
+  } else {
+    toggleButton.textContent = "Start"
+    toggleButton.style.background = "#16a34a"
+    connectionStatus.style.background = "#dc3545"
+    statusText.textContent = "Monitoring Paused"
+    statusText.style.color = "#dc3545"
+    showNotification("Extraction Paused", "Message monitoring paused", 2000)
+  }
+}
+
+function remonitorMessages() {
+  console.log("[HACKATHON] Re-monitoring messages...")
+
+  // Reset processing state
+  processedMessageCount = 0
+  messageCount = 0
+  processedMessages = []
+
+  // Update current channel URL
+  currentChannelUrl = window.location.href
+
+  // Clear processed flags from all existing messages
+  const allMessages = document.querySelectorAll('li[id^="chat-messages-"].messageListItem__5126c, [class*="message__"], [class*="messageListItem-"]')
+  allMessages.forEach(msg => {
+    delete msg.dataset.processed
+    // Remove any existing indicators
+    const indicators = msg.querySelectorAll('.processing-indicator, .success-indicator')
+    indicators.forEach(indicator => indicator.remove())
+  })
+
+  // Restart monitoring
+  extractionActive = true
+
+  // Create status widget if it should be visible
+  if (settings.showAssistant !== false && !statusWidget) {
+    createStatusWidget()
+  } else if (statusWidget) {
+    updateStatusWidget()
+  }
+
+  // Process all existing messages
+  allMessages.forEach(processMessage)
+
+  showNotification("Re-monitoring Started", `Re-scanning ${allMessages.length} messages in current channel`, 3000)
+}
+
+function storeProcessedMessage(messageText, messageElement) {
+  // Get additional context from message element
+  const messageId = messageElement.id || `msg-${Date.now()}`
+  const timestamp = new Date().toISOString()
+
+  // Try to get username from Discord's structure
+  const usernameElement = messageElement.querySelector('[class*="username"], [class*="author"]')
+  const username = usernameElement ? usernameElement.textContent.trim() : 'Unknown User'
+
+  // Try to get message timestamp from Discord
+  const timestampElement = messageElement.querySelector('time')
+  const discordTimestamp = timestampElement ? timestampElement.getAttribute('datetime') : timestamp
+
+  const messageData = {
+    id: messageId,
+    text: messageText,
+    username: username,
+    timestamp: discordTimestamp,
+    processedAt: timestamp,
+    length: messageText.length,
+    isDesignRelated: false // Will be updated after analysis
+  }
+
+  processedMessages.push(messageData)
+
+  // Keep only last 100 messages to prevent memory issues
+  if (processedMessages.length > 100) {
+    processedMessages = processedMessages.slice(-100)
+  }
+}
+
+function showMessageLogModal() {
+  if (messageLogModal) {
+    messageLogModal.remove()
+  }
+
+  messageLogModal = document.createElement("div")
+  messageLogModal.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 10005;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `
+
+  const content = document.createElement("div")
+  content.style.cssText = `
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 800px;
+    max-height: 80vh;
+    overflow-y: auto;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    width: 90%;
+  `
+
+  const messageList = processedMessages.length > 0
+    ? processedMessages.slice(-20).reverse().map((msg, index) => `
+      <div style="
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 8px;
+        background: ${index % 2 === 0 ? '#f9fafb' : 'white'};
+      ">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <strong style="color: #667eea; font-size: 14px;">${msg.username}</strong>
+          <span style="color: #666; font-size: 11px;">
+            ${new Date(msg.timestamp).toLocaleString()}
+          </span>
+        </div>
+        <div style="
+          background: white;
+          padding: 8px;
+          border-radius: 4px;
+          border-left: 3px solid #667eea;
+          font-size: 13px;
+          line-height: 1.4;
+          word-wrap: break-word;
+        ">
+          ${msg.text.length > 200 ? msg.text.substring(0, 200) + '...' : msg.text}
+        </div>
+        <div style="margin-top: 6px; font-size: 10px; color: #888;">
+          Length: ${msg.length} characters • Processed: ${new Date(msg.processedAt).toLocaleTimeString()}
+        </div>
+      </div>
+    `).join('')
+    : '<div style="text-align: center; color: #666; padding: 40px;">No messages processed yet. Start monitoring to see extracted messages here.</div>'
+
+  content.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h2 style="margin: 0; color: #333;">📝 Extracted Messages Log</h2>
+      <button id="closeMessageLog" style="background: none; border: none; font-size: 24px; cursor: pointer;">×</button>
+    </div>
+
+    <div style="margin-bottom: 15px; padding: 12px; background: #f0f7ff; border-radius: 8px; border-left: 3px solid #0066cc;">
+      <div style="font-size: 12px; color: #0066cc;">
+        <strong>📊 Summary:</strong> Showing last ${Math.min(20, processedMessages.length)} of ${processedMessages.length} processed messages
+        ${processedMessages.length > 20 ? ' (limited to recent messages for performance)' : ''}
+      </div>
+    </div>
+
+    <div style="max-height: 50vh; overflow-y: auto;">
+      ${messageList}
+    </div>
+
+    <div style="display: flex; gap: 10px; margin-top: 20px; padding-top: 15px; border-top: 1px solid #e5e7eb;">
+      <button id="exportMessages" style="
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        flex: 1;
+      ">📥 Export Messages</button>
+      <button id="clearMessages" style="
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        flex: 1;
+      ">🗑️ Clear Log</button>
+    </div>
+  `
+
+  messageLogModal.appendChild(content)
+  document.body.appendChild(messageLogModal)
+
+  // Event listeners
+  content.querySelector("#closeMessageLog").addEventListener("click", () => {
+    messageLogModal.remove()
+    messageLogModal = null
+  })
+
+  content.querySelector("#exportMessages").addEventListener("click", () => {
+    exportProcessedMessages()
+  })
+
+  content.querySelector("#clearMessages").addEventListener("click", () => {
+    if (confirm("Are you sure you want to clear all processed messages?")) {
+      processedMessages = []
+      messageLogModal.remove()
+      messageLogModal = null
+      showNotification("Messages Cleared", "All processed messages have been cleared", 2000)
+    }
+  })
+
+  messageLogModal.addEventListener("click", (e) => {
+    if (e.target === messageLogModal) {
+      messageLogModal.remove()
+      messageLogModal = null
+    }
+  })
+}
+
+function exportProcessedMessages() {
+  if (processedMessages.length === 0) {
+    showNotification("No Messages", "No processed messages to export", 3000)
+    return
+  }
+
+  const exportData = {
+    exportedAt: new Date().toISOString(),
+    totalMessages: processedMessages.length,
+    discordChannel: window.location.href,
+    messages: processedMessages.map(msg => ({
+      username: msg.username,
+      text: msg.text,
+      timestamp: msg.timestamp,
+      processedAt: msg.processedAt,
+      length: msg.length
+    }))
+  }
+
+  const dataStr = JSON.stringify(exportData, null, 2)
+  const dataBlob = new Blob([dataStr], { type: "application/json" })
+
+  const link = document.createElement("a")
+  link.href = URL.createObjectURL(dataBlob)
+  link.download = `discord-messages-${new Date().toISOString().split('T')[0]}.json`
+  link.click()
+
+  showNotification("Export Complete", `${processedMessages.length} messages exported successfully!`, 3000)
+}
+
 // Listen for messages from popup
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request) => {
   if (request.type === "SETTINGS_UPDATED") {
     settings = request.settings
     if (settings.apiKey) {
       designGenerator = new DesignGenerator(settings.apiKey)
     }
+
+    // Handle status widget visibility
+    if (settings.showAssistant !== false) {
+      // Show widget if it should be visible but doesn't exist
+      if (!statusWidget) {
+        createStatusWidget()
+      } else {
+        updateStatusWidget()
+      }
+    } else {
+      // Hide widget if it should be hidden
+      if (statusWidget) {
+        statusWidget.remove()
+        statusWidget = null
+      }
+    }
+
+    console.log("[HACKATHON] Settings updated:", settings)
   } else if (request.type === "OPEN_PANEL") {
     if (!designPanel) {
       createDesignPanel()
@@ -956,9 +1579,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 })
 
+// Watch for URL changes (channel switches)
+function watchForChannelChanges() {
+  let lastUrl = window.location.href
+  currentChannelUrl = lastUrl
+
+  const observer = new MutationObserver(() => {
+    const currentUrl = window.location.href
+    if (currentUrl !== lastUrl && currentUrl.includes('/channels/')) {
+      console.log("[HACKATHON] Channel change detected:", lastUrl, "->", currentUrl)
+      lastUrl = currentUrl
+
+      // Handle channel switch
+      if (extractionConfirmed) {
+        setTimeout(() => {
+          handleChannelSwitch()
+        }, 1000) // Delay to let Discord load new content
+      }
+    }
+  })
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  })
+}
+
+function handleChannelSwitch() {
+  console.log("[HACKATHON] Handling channel switch...")
+
+  // Reset state for new channel
+  processedMessageCount = 0
+  messageCount = 0
+  processedMessages = []
+  currentChannelUrl = window.location.href
+
+  // Update widget
+  updateStatusWidget()
+
+  // Show notification about channel switch
+  showNotification("Channel Changed", "Click 🔄 Re-monitor to scan new channel messages", 4000)
+}
+
 // Initialize when DOM is ready
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", init)
+  document.addEventListener("DOMContentLoaded", () => {
+    init()
+    watchForChannelChanges()
+  })
 } else {
   init()
+  watchForChannelChanges()
 }
